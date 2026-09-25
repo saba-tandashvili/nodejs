@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "name": "Laptop",
+    "price": 1000,
+    "description": "A high-performance laptop."
+  },
+  {
+    "id": 2,
+    "name": "Smartphone",
+    "price": 500,
+    "description": "A latest-generation smartphone."
+  },
+  {
+    "id": 3,
+    "name": "Headphones",
+    "price": 100,
+    "description": "noise cancelling headphones."
+  },
+  {
+    "name": "PC",
+    "price": 2000,
+    "description": "Gaming PC.",
+    "id": 1790012813311
+  },
+  {
+    "name": "PC",
+    "price": 2000,
+    "description": "Gaming PC.",
+    "id": 1790087105032
+  }
+]
