@@ -1,48 +1,52 @@
 import express from "express";
 import morgan from "morgan";
-import dotenv from "dotenv";
-import rateLimit from "express-rate-limit";
-
+import mongoose from "mongoose";
 import productsRouter from "./routes/productsRoute.js";
-import usersRouter from "./routes/usersRoute.js";
-
-dotenv.config({ path: "./config.env" });
 
 const app = express();
-
-app.use(express.json());
-
-// 6. Maintenance Middleware
-app.use((req, res, next) => {
-  if (process.env.IS_MAINTENANCE === "true") {
-    return res.status(530).json({ message: "Site is under maintenance" });
-  }
-  next();
-});
-
-// 7. Rate Limiter Middleware
-const limiter = rateLimit({
-  windowMs: 1 * 60 * 1000,
-  max: 10,
-  message: { message: "Too many requests, please try again later." },
-});
-app.use(limiter);
-
-// 3. Request Logger Middleware
-app.use((req, res, next) => {
-  const time = new Date().toISOString();
-  console.log(`[${time}] ${req.method} ${req.originalUrl}`);
-  next();
-});
+console.log(process.env.NODE_ENV);
 
 if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
 }
 
-app.use("/products", productsRouter);
-app.use("/users", usersRouter);
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+app.use((req, res, next) => {
+  console.log("hello from middleware!");
+  next();
 });
+app.use(express.json());
+
+const getUsers = (req, res) => {
+  res.send("get users");
+};
+const createUser = (req, res) => {
+  res.send("create users");
+};
+const editUser = (req, res) => {
+  res.send("edit users");
+};
+const deleteUser = (req, res) => {
+  res.send("delete users");
+};
+
+const usersRouter = express.Router();
+app.use("/products", productsRouter);
+
+app.use("/users", usersRouter);
+usersRouter.route("/").get(getUsers).post(createUser);
+usersRouter.route("/:id").put(editUser).delete(deleteUser);
+
+app.use((err, req, res, next) => {
+  if (err instanceof mongoose.Error.ValidationError) {
+    return res.status(400).json({ message: err.message });
+  }
+
+  if (err instanceof mongoose.Error.CastError) {
+    return res.status(400).json({ message: "Invalid request value" });
+  }
+
+  console.error(err);
+  res.status(500).json({ message: "Internal server error" });
+});
+
+export default app;
