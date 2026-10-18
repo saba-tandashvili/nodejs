@@ -1,5 +1,5 @@
 import fs from "fs"
-1
+
 const readProducts = () => JSON.parse(fs.readFileSync("./data/products.json", "utf8"))
 
 const getProducts = (req, res) => {
