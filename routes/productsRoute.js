@@ -1,15 +1,12 @@
 import express from "express";
-import {
-  getProducts,
-  getProductPriceRanges,
-  postProducts,
-  putProducts,
-  deleteProducts,
-} from "../controllers/productController.js";
-
+import {getProducts, createProducts, editProduct, deleteProduct, buyProduct} from "../controllers/productController.js";
 const productsRouter = express.Router();
-productsRouter.route("/").get(getProducts).post(postProducts);
-productsRouter.get("/price-ranges", getProductPriceRanges);
-productsRouter.route("/:id").put(putProducts).delete(deleteProducts);
+
+
+
+
+productsRouter.route("/").get(getProducts).post(createProducts);
+productsRouter.route("/:id").put(editProduct).delete(deleteProduct);
+productsRouter.route("/buy/:id").post(buyProduct);
 
 export default productsRouter;

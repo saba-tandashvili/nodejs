@@ -1,93 +1,67 @@
-import mongoose from "mongoose";
-import Product from "../models/Product.js";
+import fs from "fs"
+1
+const readProducts = () => JSON.parse(fs.readFileSync("./data/products.json", "utf8"))
 
-const getProducts = async (req, res) => {
-  const products = await Product.find({ archived: { $ne: true } });
-  res.json(products);
-};
+const getProducts = (req, res) => {
+  res.json(readProducts())
+}
 
-const getProductPriceRanges = async (req, res) => {
-  const priceRanges = await Product.aggregate([
-    { $match: { archived: { $ne: true } } },
-    {
-      $bucket: {
-        groupBy: "$price",
-        boundaries: [0, 100, 500, 1000],
-        default: "1000+",
-        output: {
-          averagePrice: { $avg: "$price" },
-          minimumPrice: { $min: "$price" },
-          maximumPrice: { $max: "$price" },
-          productCount: { $sum: 1 },
-        },
-      },
-    },
-    {
-      $project: {
-        _id: 0,
-        priceRange: {
-          $switch: {
-            branches: [
-              { case: { $eq: ["$_id", 0] }, then: "0-99.99" },
-              { case: { $eq: ["$_id", 100] }, then: "100-499.99" },
-              { case: { $eq: ["$_id", 500] }, then: "500-999.99" },
-            ],
-            default: "$_id",
-          },
-        },
-        averagePrice: 1,
-        minimumPrice: 1,
-        maximumPrice: 1,
-        productCount: 1,
-      },
-    },
-  ]);
-
-  res.json(priceRanges);
-};
-
-const postProducts = async (req, res) => {
-  const product = await Product.create(req.body);
-  res.status(201).json(product);
-};
-
-const putProducts = async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) {
-    return res.status(400).json({ message: "Invalid product id" });
+const createProducts = (req, res) => {
+  const products = readProducts();
+  const newProduct = {
+    ...req.body,
+    id: Date.now(),
+    createdAt: new Date().toISOString(),
   }
 
-  const product = await Product.findById(req.params.id);
-
-  if (!product) {
-    return res.status(404).json({ message: "Product not found" });
+  if(!newProduct.name || !newProduct.price ) {
+    res.status(406).json({ message: "name and price are required" })
   }
 
-  product.set(req.body);
-  const updatedProduct = await product.save();
+  products.push(newProduct)
+  fs.copyFileSync("./data/products.json", `./data/products_backup_${newProduct.id}.json`)
+  fs.writeFileSync("./data/products.json", JSON.stringify(products))
+  res.status(201).json(newProduct)
+}
 
-  res.json(updatedProduct);
-};
+const editProduct = (req, res) => {
+  const products = readProducts();
+  const productIndex = products.findIndex(
+    (product) => product.id === parseInt(req.params.id)
+  )
+  const newProduct = { ...products[productIndex], ...req.body }
+  products[productIndex] = newProduct;
+  fs.writeFileSync("./data/products.json", JSON.stringify(products));
+  res.json(newProduct);
+}
 
-const deleteProducts = async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) {
-    return res.status(400).json({ message: "Invalid product id" });
+const deleteProduct = (req, res) => {
+  const products = readProducts();
+  const newProducts = products.filter(
+    (product) => product.id !== parseInt(req.params.id)
+  )
+  fs.writeFileSync("./data/products.json", JSON.stringify(newProducts));
+  res.status(200).send("Product deleted")
+}
+
+const buyProduct = (req, res) => {
+  const productId = parseInt(req.params.id)
+
+  const products = readProducts();
+  const productIndex = products.findIndex(
+    (product) => product.id === productId
+  )
+
+  if (products[productIndex].stock === -1) {
+    return res.status(404).json({ message: "Product not found" })
   }
 
-  const product = await Product.findById(req.params.id);
-  if (!product) {
-    return res.status(404).json({ message: "Product not found" });
-  }
+  fs.writeFileSync("./data/products.json", JSON.stringify(products));
 
-  product.archived = true;
-  await product.save();
+  res.json({
+    message: "You buy that product",
+    data: products[productIndex],
+  })
+}
 
-  res.status(204).send();
-};
-
-export {
-  getProducts,
-  getProductPriceRanges,
-  postProducts,
-  putProducts,
-  deleteProducts,
-};
+export {getProducts, createProducts, editProduct, deleteProduct, buyProduct}
