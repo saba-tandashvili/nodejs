@@ -19,6 +19,8 @@ Express API for managing products stored in PostgreSQL.
 3. Create the products table by running `db/schema.sql` against that database.
 4. Start the API with `npm start`.
 
+Run the API tests with `npm test`.
+
 Swagger UI is available at [http://localhost:3000/api-docs](http://localhost:3000/api-docs).
 
 ## Product endpoints
