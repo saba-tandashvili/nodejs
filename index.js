@@ -3,6 +3,7 @@ dotenv.config();
 import express from "express";
 import swaggerUi from "swagger-ui-express";
 import swaggerDocument from "./docs/openapi.js";
+import userRoutes from "./routes/userRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
 
 const app = express();
@@ -11,11 +12,12 @@ const port = process.env.PORT || 3000;
 app.use(express.json());
 
 app.get("/", (req, res) => {
-  res.json({ message: "Welcome to the Express PostgreSQL API" });
+  res.json({ message: "Welcome to the Express Prisma API" });
 });
 
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 app.use("/api/products", productRoutes);
+app.use("/api/users", userRoutes);
 
 app.use((err, req, res, next) => {
   if (err.status === 400) {

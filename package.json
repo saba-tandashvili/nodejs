@@ -16,13 +16,18 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "prisma:generate": "node scripts/prisma.js generate",
+    "db:push": "node scripts/prisma.js db push"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "dotenv": "^18.0.9",
     "express": "^5.3.0",
     "nodemon": "^1.0.2",
-    "pg": "^8.23.1",
     "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "prisma": "^6.19.3"
   }
 }

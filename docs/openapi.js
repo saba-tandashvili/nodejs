@@ -6,6 +6,20 @@ const productSchema = {
     name: { type: "string", minLength: 1, example: "Laptop" },
     price: { type: "number", minimum: 0, maximum: 9999999999.99, example: 999.99 },
     description: { type: "string", minLength: 1, example: "A high-performance laptop." },
+    stock: { type: "integer", minimum: 0, example: 20 },
+    slug: { type: "string", nullable: true, example: "laptop" },
+    categoryId: { type: "string", nullable: true, example: "1" },
+  },
+};
+
+const userSchema = {
+  type: "object",
+  required: ["firstName", "lastName", "email"],
+  properties: {
+    id: { type: "string", example: "1", readOnly: true },
+    firstName: { type: "string", minLength: 1, example: "Ada" },
+    lastName: { type: "string", minLength: 1, example: "Lovelace" },
+    email: { type: "string", format: "email", example: "ada@example.com" },
   },
 };
 
@@ -142,10 +156,187 @@ const swaggerDocument = {
         },
       },
     },
+    "/api/products/buyProduct/{id}": {
+      post: {
+        tags: ["Products"],
+        summary: "Record a product purchase",
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string", pattern: "^[1-9][0-9]*$" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["userId"],
+                additionalProperties: false,
+                properties: { userId: { type: "string", example: "1" } },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "Purchase recorded",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string" },
+                    userId: { type: "string" },
+                    productId: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+          400: invalidRequestResponse,
+          404: { description: "Product or user not found" },
+          500: { description: "Database error" },
+        },
+      },
+    },
+    "/api/users": {
+      get: {
+        tags: ["Users"],
+        summary: "List users",
+        responses: {
+          200: {
+            description: "Users ordered by id",
+            content: {
+              "application/json": {
+                schema: { type: "array", items: { $ref: "#/components/schemas/User" } },
+              },
+            },
+          },
+          500: { description: "Database error" },
+        },
+      },
+      post: {
+        tags: ["Users"],
+        summary: "Create a user",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/UserInput" } },
+          },
+        },
+        responses: {
+          201: {
+            description: "User created",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/User" } } },
+          },
+          400: { description: "Invalid user data" },
+          409: { description: "Email already exists" },
+          500: { description: "Database error" },
+        },
+      },
+    },
+    "/api/users/{id}": {
+      parameters: [
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: { type: "string", pattern: "^[1-9][0-9]*$" },
+        },
+      ],
+      get: {
+        tags: ["Users"],
+        summary: "Get a user",
+        responses: {
+          200: {
+            description: "User",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/User" } } },
+          },
+          400: { description: "Invalid user id" },
+          404: { description: "User not found" },
+          500: { description: "Database error" },
+        },
+      },
+      put: {
+        tags: ["Users"],
+        summary: "Update user fields",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/UserUpdate" } },
+          },
+        },
+        responses: {
+          200: {
+            description: "User updated",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/User" } } },
+          },
+          400: { description: "Invalid user id or data" },
+          404: { description: "User not found" },
+          409: { description: "Email already exists" },
+          500: { description: "Database error" },
+        },
+      },
+      patch: {
+        tags: ["Users"],
+        summary: "Partially update a user",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/UserUpdate" } },
+          },
+        },
+        responses: {
+          200: {
+            description: "User updated",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/User" } } },
+          },
+          400: { description: "Invalid user id or data" },
+          404: { description: "User not found" },
+          409: { description: "Email already exists" },
+          500: { description: "Database error" },
+        },
+      },
+      delete: {
+        tags: ["Users"],
+        summary: "Delete a user",
+        responses: {
+          204: { description: "User deleted" },
+          400: { description: "Invalid user id" },
+          404: { description: "User not found" },
+          500: { description: "Database error" },
+        },
+      },
+    },
   },
   components: {
     schemas: {
       Product: productSchema,
+      User: userSchema,
+      UserInput: {
+        type: "object",
+        required: ["firstName", "lastName", "email"],
+        additionalProperties: false,
+        properties: {
+          firstName: userSchema.properties.firstName,
+          lastName: userSchema.properties.lastName,
+          email: userSchema.properties.email,
+        },
+      },
+      UserUpdate: {
+        type: "object",
+        minProperties: 1,
+        additionalProperties: false,
+        properties: {
+          firstName: userSchema.properties.firstName,
+          lastName: userSchema.properties.lastName,
+          email: userSchema.properties.email,
+        },
+      },
       ProductInput: {
         type: "object",
         required: ["name", "price", "description"],
@@ -154,6 +345,9 @@ const swaggerDocument = {
           name: productSchema.properties.name,
           price: productSchema.properties.price,
           description: productSchema.properties.description,
+          stock: productSchema.properties.stock,
+          slug: productSchema.properties.slug,
+          categoryId: productSchema.properties.categoryId,
         },
       },
       ProductUpdate: {
@@ -164,6 +358,9 @@ const swaggerDocument = {
           name: productSchema.properties.name,
           price: productSchema.properties.price,
           description: productSchema.properties.description,
+          stock: productSchema.properties.stock,
+          slug: productSchema.properties.slug,
+          categoryId: productSchema.properties.categoryId,
         },
       },
     },
