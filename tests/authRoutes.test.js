@@ -5,7 +5,7 @@ import prisma from "../config/prisma.js";
 import authRoutes from "../routes/authRoutes.js";
 import { verifyToken } from "../middleware/auth.js";
 
-process.env.JWT_SECRET = "test-secret-with-more-than-thirty-two-characters";
+process.env.JWT_SECRET = "91f7b7b62c1ad05b25f77665b254282aea39d24d2d27a4e9d2a42221032eb315";
 
 const app = express();
 app.use(express.json());
