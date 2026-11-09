@@ -31,7 +31,15 @@ model users {
   firstName  String
   lastName   String
   email      String          @unique
+  password   String?
+  role       UserRole        @default(customer)
   purchases  usersProducts[]
+}
+
+enum UserRole {
+  admin
+  manager
+  customer
 }
 
 model usersProducts {

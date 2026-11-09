@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import express from "express";
 import prisma from "../config/prisma.js";
+import { signToken } from "../middleware/auth.js";
 import productRoutes from "../routes/productRoutes.js";
 
+process.env.JWT_SECRET = "test-secret-with-more-than-thirty-two-characters";
 const product = {
   id: 1n,
   name: "Laptop",
@@ -14,6 +16,8 @@ const product = {
   categoryId: null,
 };
 const user = { id: 1n };
+const adminToken = signToken({ id: user.id, role: "admin" });
+const customerToken = signToken({ id: user.id, role: "customer" });
 const app = express();
 app.use(express.json());
 app.use("/api/products", productRoutes);
@@ -22,6 +26,15 @@ let server;
 let origin;
 let lastOperation;
 let purchaseCount = 0;
+function apiFetch(path, options = {}, token = adminToken) {
+  return fetch(`${origin}${path}`, {
+    ...options,
+    headers: {
+      ...options.headers,
+      authorization: `Bearer ${token}`,
+    },
+  });
+}
 const originalMethods = {
   findMany: prisma.products.findMany,
   findUnique: prisma.products.findUnique,
@@ -90,7 +103,7 @@ after(async () => {
 });
 
 test("lists products", async () => {
-  const response = await fetch(`${origin}/api/products`);
+  const response = await apiFetch("/api/products");
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), [
     { ...product, id: "1", categoryId: null },
@@ -98,7 +111,7 @@ test("lists products", async () => {
 });
 
 test("creates a product with normalized fields", async () => {
-  const response = await fetch(`${origin}/api/products`, {
+  const response = await apiFetch("/api/products", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name: " Laptop ", price: 12, description: " Useful " }),
@@ -112,7 +125,7 @@ test("creates a product with normalized fields", async () => {
 });
 
 test("rejects invalid product input", async () => {
-  const response = await fetch(`${origin}/api/products`, {
+  const response = await apiFetch("/api/products", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name: "", price: -1, description: "Laptop" }),
@@ -122,32 +135,32 @@ test("rejects invalid product input", async () => {
 });
 
 test("rejects invalid IDs and returns not found for missing products", async () => {
-  const invalidResponse = await fetch(`${origin}/api/products/not-an-id`);
+  const invalidResponse = await apiFetch("/api/products/not-an-id");
   assert.equal(invalidResponse.status, 400);
 
-  const missingResponse = await fetch(`${origin}/api/products/2`);
+  const missingResponse = await apiFetch("/api/products/2");
   assert.equal(missingResponse.status, 404);
 });
 
 test("supports updates and deletes", async () => {
-  const updateResponse = await fetch(`${origin}/api/products/1`, {
+  const updateResponse = await apiFetch("/api/products/1", {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name: "Updated laptop" }),
   });
   assert.equal(updateResponse.status, 200);
 
-  const deleteResponse = await fetch(`${origin}/api/products/1`, { method: "DELETE" });
+  const deleteResponse = await apiFetch("/api/products/1", { method: "DELETE" });
   assert.equal(deleteResponse.status, 204);
 });
 
 test("records each valid purchase and validates the buyer", async () => {
   const purchaseRequest = () =>
-    fetch(`${origin}/api/products/buyProduct/1`, {
+    apiFetch("/api/products/buyProduct/1", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ userId: "1" }),
-    });
+      body: JSON.stringify({}),
+    }, customerToken);
   const firstPurchase = await purchaseRequest();
   const secondPurchase = await purchaseRequest();
 
@@ -155,10 +168,43 @@ test("records each valid purchase and validates the buyer", async () => {
   assert.equal(secondPurchase.status, 201);
   assert.notEqual((await firstPurchase.json()).id, (await secondPurchase.json()).id);
 
-  const invalidBuyer = await fetch(`${origin}/api/products/buyProduct/1`, {
+  const invalidBuyer = await apiFetch("/api/products/buyProduct/1", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ userId: "invalid" }),
-  });
+  }, customerToken);
   assert.equal(invalidBuyer.status, 400);
+});
+
+test("limits customers to viewing and buying products", async () => {
+  const listResponse = await apiFetch("/api/products", {}, customerToken);
+  assert.equal(listResponse.status, 200);
+
+  const createResponse = await apiFetch(
+    "/api/products",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Phone", price: 10, description: "A phone" }),
+    },
+    customerToken,
+  );
+  assert.equal(createResponse.status, 403);
+
+  const unauthenticated = await fetch(`${origin}/api/products`);
+  assert.equal(unauthenticated.status, 401);
+});
+
+test("allows managers to manage products but not users", async () => {
+  const managerToken = signToken({ id: user.id, role: "manager" });
+  const response = await apiFetch(
+    "/api/products",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Phone", price: 10, description: "A phone" }),
+    },
+    managerToken,
+  );
+  assert.equal(response.status, 201);
 });

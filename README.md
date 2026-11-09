@@ -10,6 +10,7 @@ Express API for managing products and users in PostgreSQL with Prisma ORM.
    ```env
    DATABASE_URL="postgresql://postgres:your-password@localhost:5432/ecommerce?schema=public"
    PORT=3000
+   JWT_SECRET="replace-with-a-random-secret-at-least-32-characters-long"
    ```
 
    The application also supports the legacy `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`, and `DB_DATABASE` variables.
@@ -26,6 +27,22 @@ Run the API tests with `npm test`.
 
 Swagger UI is available at [http://localhost:3000/api-docs](http://localhost:3000/api-docs).
 
+## Authentication and authorization
+
+Register with `POST /api/auth/register` using `firstName`, `lastName`, `email`, and a password (8-128 characters), or log in with `POST /api/auth/login`. Both return a JWT and public user information. Passwords are stored as scrypt hashes. Tokens expire after one hour.
+
+Send the token on protected routes as `Authorization: Bearer <token>`. `GET /api/users/profile` returns the authenticated user's information without a password.
+
+| Role | Access |
+| --- | --- |
+| `admin` | All product and user routes; can assign roles through the user API |
+| `manager` | Access product routes only |
+| `customer` | View products and buy products |
+
+Public registration always creates a `customer`; it cannot assign privileged roles. Create the first admin by registering an account and changing its role to `admin` directly in the database. Admins can then assign `manager`, `customer`, or `admin` roles through `PATCH /api/users/:id`.
+
+Import [docs/postman_collection.json](./docs/postman_collection.json) into Postman. The collection saves a successful registration or login token into its `jwt` variable and automatically sends it as a bearer token on protected requests. Update the collection's `baseUrl`, `email`, and `password` variables as needed.
+
 ## Product endpoints
 
 | Method | Path | Description |
@@ -35,7 +52,7 @@ Swagger UI is available at [http://localhost:3000/api-docs](http://localhost:300
 | `POST` | `/api/products` | Create a product |
 | `PUT` / `PATCH` | `/api/products/:id` | Update one or more product fields |
 | `DELETE` | `/api/products/:id` | Delete a product |
-| `POST` | `/api/products/buyProduct/:id` | Record a user's purchase of a product |
+| `POST` | `/api/products/buyProduct/:id` | Record the authenticated user's purchase of a product (send `{}`) |
 
 ## User endpoints
 
@@ -54,14 +71,6 @@ A product requires a non-empty `name` and `description`, and a non-negative nume
   "name": "Laptop",
   "price": 999.99,
   "description": "A high-performance laptop."
-}
-```
-
-Create a user with `firstName`, `lastName`, and a unique `email`. To record a purchase, send `POST /api/products/buyProduct/:id` with the buyer's ID:
-
-```json
-{
-  "userId": "1"
 }
 ```
 

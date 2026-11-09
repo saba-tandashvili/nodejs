@@ -178,14 +178,12 @@ async function buyProduct(req, res) {
   if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
     return res.status(400).json({ error: "Request body must be an object" });
   }
-  if (Object.keys(req.body).length !== 1 || !("userId" in req.body)) {
-    return res.status(400).json({ error: "Only userId is allowed" });
-  }
-  if (!isValidId(req.body.userId)) {
-    return res.status(400).json({ error: "User id must be a positive integer" });
+  if (Object.keys(req.body).length !== 0) {
+    return res.status(400).json({ error: "Request body must be empty; buyer is taken from the token" });
   }
 
   try {
+    const buyerId = BigInt(req.user.id);
     const result = await prisma.$transaction(async (transaction) => {
       const product = await transaction.products.findUnique({
         where: { id: BigInt(req.params.id) },
@@ -195,7 +193,7 @@ async function buyProduct(req, res) {
         return { missing: "Product" };
       }
       const user = await transaction.users.findUnique({
-        where: { id: BigInt(req.body.userId) },
+        where: { id: buyerId },
         select: { id: true },
       });
       if (!user) {

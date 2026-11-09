@@ -20,6 +20,7 @@ const userSchema = {
     firstName: { type: "string", minLength: 1, example: "Ada" },
     lastName: { type: "string", minLength: 1, example: "Lovelace" },
     email: { type: "string", format: "email", example: "ada@example.com" },
+    role: { type: "string", enum: ["admin", "manager", "customer"], example: "customer" },
   },
 };
 
@@ -44,11 +45,67 @@ const swaggerDocument = {
   info: {
     title: "Products API",
     version: "1.0.0",
-    description: "CRUD API for products stored in PostgreSQL.",
+    description: "JWT-protected products and users API with role-based access.",
   },
   servers: [{ url: "http://localhost:3000" }],
-  tags: [{ name: "Products" }],
+  security: [{ bearerAuth: [] }],
+  tags: [{ name: "Authentication" }, { name: "Products" }, { name: "Users" }],
   paths: {
+    "/api/auth/register": {
+      post: {
+        tags: ["Authentication"],
+        summary: "Register a customer account",
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["firstName", "lastName", "email", "password"],
+                properties: {
+                  firstName: { type: "string" },
+                  lastName: { type: "string" },
+                  email: { type: "string", format: "email" },
+                  password: { type: "string", minLength: 8, maxLength: 128 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: { description: "Customer registered; response includes a JWT" },
+          400: { description: "Invalid registration data" },
+          409: { description: "Email already exists" },
+        },
+      },
+    },
+    "/api/auth/login": {
+      post: {
+        tags: ["Authentication"],
+        summary: "Log in",
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email", "password"],
+                properties: {
+                  email: { type: "string", format: "email" },
+                  password: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: "Login successful; response includes a JWT" },
+          401: { description: "Invalid email or password" },
+        },
+      },
+    },
     "/api/products": {
       get: {
         tags: ["Products"],
@@ -67,7 +124,7 @@ const swaggerDocument = {
       },
       post: {
         tags: ["Products"],
-        summary: "Create a product",
+        summary: "Create a product (admin or manager)",
         requestBody: {
           required: true,
           content: {
@@ -108,7 +165,7 @@ const swaggerDocument = {
       },
       put: {
         tags: ["Products"],
-        summary: "Update product fields",
+        summary: "Update product fields (admin or manager)",
         description: "Updates one or more provided fields. Omitted fields remain unchanged.",
         requestBody: {
           required: true,
@@ -128,7 +185,7 @@ const swaggerDocument = {
       },
       patch: {
         tags: ["Products"],
-        summary: "Partially update a product",
+        summary: "Partially update a product (admin or manager)",
         requestBody: {
           required: true,
           content: {
@@ -147,7 +204,7 @@ const swaggerDocument = {
       },
       delete: {
         tags: ["Products"],
-        summary: "Delete a product",
+        summary: "Delete a product (admin or manager)",
         responses: {
           204: { description: "Product deleted" },
           400: invalidRequestResponse,
@@ -159,7 +216,7 @@ const swaggerDocument = {
     "/api/products/buyProduct/{id}": {
       post: {
         tags: ["Products"],
-        summary: "Record a product purchase",
+        summary: "Record a product purchase (authenticated user)",
         parameters: [
           {
             name: "id",
@@ -174,9 +231,8 @@ const swaggerDocument = {
             "application/json": {
               schema: {
                 type: "object",
-                required: ["userId"],
                 additionalProperties: false,
-                properties: { userId: { type: "string", example: "1" } },
+                properties: {},
               },
             },
           },
@@ -206,7 +262,7 @@ const swaggerDocument = {
     "/api/users": {
       get: {
         tags: ["Users"],
-        summary: "List users",
+        summary: "List users (admin only)",
         responses: {
           200: {
             description: "Users ordered by id",
@@ -221,7 +277,7 @@ const swaggerDocument = {
       },
       post: {
         tags: ["Users"],
-        summary: "Create a user",
+        summary: "Create a user (admin only)",
         requestBody: {
           required: true,
           content: {
@@ -239,6 +295,16 @@ const swaggerDocument = {
         },
       },
     },
+    "/api/users/profile": {
+      get: {
+        tags: ["Users"],
+        summary: "Get the authenticated user's profile",
+        responses: {
+          200: { description: "Profile without password" },
+          401: { description: "Missing or invalid token" },
+        },
+      },
+    },
     "/api/users/{id}": {
       parameters: [
         {
@@ -250,7 +316,7 @@ const swaggerDocument = {
       ],
       get: {
         tags: ["Users"],
-        summary: "Get a user",
+        summary: "Get a user (admin only)",
         responses: {
           200: {
             description: "User",
@@ -263,7 +329,7 @@ const swaggerDocument = {
       },
       put: {
         tags: ["Users"],
-        summary: "Update user fields",
+        summary: "Update user fields (admin only)",
         requestBody: {
           required: true,
           content: {
@@ -283,7 +349,7 @@ const swaggerDocument = {
       },
       patch: {
         tags: ["Users"],
-        summary: "Partially update a user",
+        summary: "Partially update a user (admin only)",
         requestBody: {
           required: true,
           content: {
@@ -303,7 +369,7 @@ const swaggerDocument = {
       },
       delete: {
         tags: ["Users"],
-        summary: "Delete a user",
+        summary: "Delete a user (admin only)",
         responses: {
           204: { description: "User deleted" },
           400: { description: "Invalid user id" },
@@ -314,17 +380,26 @@ const swaggerDocument = {
     },
   },
   components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT",
+      },
+    },
     schemas: {
       Product: productSchema,
       User: userSchema,
       UserInput: {
         type: "object",
-        required: ["firstName", "lastName", "email"],
+        required: ["firstName", "lastName", "email", "password"],
         additionalProperties: false,
         properties: {
           firstName: userSchema.properties.firstName,
           lastName: userSchema.properties.lastName,
           email: userSchema.properties.email,
+          password: { type: "string", minLength: 8, maxLength: 128 },
+          role: userSchema.properties.role,
         },
       },
       UserUpdate: {
@@ -335,6 +410,8 @@ const swaggerDocument = {
           firstName: userSchema.properties.firstName,
           lastName: userSchema.properties.lastName,
           email: userSchema.properties.email,
+          password: { type: "string", minLength: 8, maxLength: 128 },
+          role: userSchema.properties.role,
         },
       },
       ProductInput: {

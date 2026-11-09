@@ -2,14 +2,19 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import express from "express";
 import prisma from "../config/prisma.js";
+import { signToken } from "../middleware/auth.js";
 import userRoutes from "../routes/userRoutes.js";
 
+process.env.JWT_SECRET = "test-secret-with-more-than-thirty-two-characters";
 const user = {
   id: 1n,
   firstName: "Ada",
   lastName: "Lovelace",
   email: "ada@example.com",
+  password: "scrypt$not-returned",
+  role: "admin",
 };
+const adminToken = signToken({ id: user.id, role: user.role });
 const app = express();
 app.use(express.json());
 app.use("/api/users", userRoutes);
@@ -17,6 +22,15 @@ app.use("/api/users", userRoutes);
 let server;
 let origin;
 let lastOperation;
+function apiFetch(path, options = {}, token = adminToken) {
+  return fetch(`${origin}${path}`, {
+    ...options,
+    headers: {
+      ...options.headers,
+      authorization: `Bearer ${token}`,
+    },
+  });
+}
 const originalMethods = {
   findMany: prisma.users.findMany,
   findUnique: prisma.users.findUnique,
@@ -59,47 +73,70 @@ after(async () => {
 });
 
 test("supports user CRUD operations", async () => {
-  const listResponse = await fetch(`${origin}/api/users`);
+  const listResponse = await apiFetch("/api/users");
   assert.equal(listResponse.status, 200);
-  assert.deepEqual(await listResponse.json(), [{ ...user, id: "1" }]);
+  assert.deepEqual(await listResponse.json(), [
+    { id: "1", firstName: "Ada", lastName: "Lovelace", email: "ada@example.com", role: "admin" },
+  ]);
 
-  const createResponse = await fetch(`${origin}/api/users`, {
+  const createResponse = await apiFetch("/api/users", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       firstName: " Ada ",
       lastName: " Lovelace ",
       email: " ada@example.com ",
+      password: "a-secure-password",
     }),
   });
   assert.equal(createResponse.status, 201);
-  assert.deepEqual(lastOperation, [
-    "create",
+  assert.equal(lastOperation[0], "create");
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(lastOperation[1]).filter(([key]) => key !== "password")),
     { firstName: "Ada", lastName: "Lovelace", email: "ada@example.com" },
-  ]);
+  );
+  assert.match(lastOperation[1].password, /^scrypt\$/);
 
-  const updateResponse = await fetch(`${origin}/api/users/1`, {
+  const updateResponse = await apiFetch("/api/users/1", {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ firstName: "Augusta" }),
   });
   assert.equal(updateResponse.status, 200);
 
-  const deleteResponse = await fetch(`${origin}/api/users/1`, { method: "DELETE" });
+  const deleteResponse = await apiFetch("/api/users/1", { method: "DELETE" });
   assert.equal(deleteResponse.status, 204);
 });
 
 test("validates user input and IDs", async () => {
-  const invalidUser = await fetch(`${origin}/api/users`, {
+  const invalidUser = await apiFetch("/api/users", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ firstName: "Ada", lastName: "Lovelace", email: "invalid" }),
   });
   assert.equal(invalidUser.status, 400);
 
-  const invalidId = await fetch(`${origin}/api/users/nope`);
+  const invalidId = await apiFetch("/api/users/nope");
   assert.equal(invalidId.status, 400);
 
-  const missingUser = await fetch(`${origin}/api/users/2`);
+  const missingUser = await apiFetch("/api/users/2");
   assert.equal(missingUser.status, 404);
+});
+
+test("protects the profile endpoint and never returns the password", async () => {
+  const unauthenticated = await fetch(`${origin}/api/users/profile`);
+  assert.equal(unauthenticated.status, 401);
+
+  const response = await apiFetch("/api/users/profile");
+  assert.equal(response.status, 200);
+  const profile = await response.json();
+  assert.equal(profile.id, "1");
+  assert.equal(profile.role, "admin");
+  assert.equal("password" in profile, false);
+});
+
+test("restricts user administration to admins", async () => {
+  const managerToken = signToken({ id: user.id, role: "manager" });
+  const response = await apiFetch("/api/users", {}, managerToken);
+  assert.equal(response.status, 403);
 });

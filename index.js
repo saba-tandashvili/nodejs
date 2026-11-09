@@ -5,10 +5,13 @@ import swaggerUi from "swagger-ui-express";
 import swaggerDocument from "./docs/openapi.js";
 import userRoutes from "./routes/userRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
+import authRoutes from "./routes/authRoutes.js";
+import { assertJwtSecret } from "./middleware/auth.js";
 
 const app = express();
 const port = process.env.PORT || 3000;
 
+assertJwtSecret();
 app.use(express.json());
 
 app.get("/", (req, res) => {
@@ -16,6 +19,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/users", userRoutes);
 
