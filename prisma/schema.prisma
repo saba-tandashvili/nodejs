@@ -38,6 +38,7 @@ model users {
   passwordResetOtpExpiresAt DateTime?
   passwordResetOtpAttempts  Int             @default(0)
   purchases                 usersProducts[]
+  profilePicture            String?         @db.VarChar(255)
 }
 
 enum UserRole {
