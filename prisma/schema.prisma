@@ -27,13 +27,17 @@ model products {
 }
 
 model users {
-  id         BigInt          @id @default(autoincrement())
-  firstName  String
-  lastName   String
-  email      String          @unique
-  password   String?
-  role       UserRole        @default(customer)
-  purchases  usersProducts[]
+  id                        BigInt          @id @default(autoincrement())
+  firstName                 String
+  lastName                  String
+  email                     String          @unique
+  password                  String?
+  role                      UserRole        @default(customer)
+  passwordResetOtpHash      String?
+  passwordResetOtpSalt      String?
+  passwordResetOtpExpiresAt DateTime?
+  passwordResetOtpAttempts  Int             @default(0)
+  purchases                 usersProducts[]
 }
 
 enum UserRole {

@@ -31,6 +31,8 @@ Swagger UI is available at [http://localhost:3000/api-docs](http://localhost:300
 
 Register with `POST /api/auth/register` using `firstName`, `lastName`, `email`, and a password (8-128 characters), or log in with `POST /api/auth/login`. Both return a JWT and public user information. Passwords are stored as scrypt hashes. Tokens expire after one hour.
 
+Password recovery uses `POST /api/auth/forgot-password` with `{ "email": "user@example.com" }`, followed by `POST /api/auth/reset-password` with `{ "email": "user@example.com", "otp": "123456", "newPassword": "new-password" }`. Reset codes are emailed, expire after 10 minutes, and are invalidated after five incorrect attempts. Configure `SMTP_HOST`, `SMTP_FROM`, and optionally `SMTP_PORT` (default `587`), `SMTP_SECURE` (`true` or `false`), `SMTP_USER`, and `SMTP_PASSWORD` before enabling password recovery. After updating the Prisma schema, run `npm run db:push` and `npm run prisma:generate`.
+
 Send the token on protected routes as `Authorization: Bearer <token>`. `GET /api/users/profile` returns the authenticated user's information without a password.
 
 | Role | Access |

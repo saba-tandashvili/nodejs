@@ -106,6 +106,57 @@ const swaggerDocument = {
         },
       },
     },
+    "/api/auth/forgot-password": {
+      post: {
+        tags: ["Authentication"],
+        summary: "Send a password reset code by email",
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email"],
+                properties: { email: { type: "string", format: "email" } },
+              },
+            },
+          },
+        },
+        responses: {
+          202: { description: "Reset request accepted without revealing whether the account exists" },
+          400: { description: "Invalid email" },
+          500: { description: "Unable to send reset email" },
+        },
+      },
+    },
+    "/api/auth/reset-password": {
+      post: {
+        tags: ["Authentication"],
+        summary: "Reset a password with its email code",
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email", "otp", "newPassword"],
+                properties: {
+                  email: { type: "string", format: "email" },
+                  otp: { type: "string", pattern: "^\\d{6}$" },
+                  newPassword: { type: "string", minLength: 8, maxLength: 128 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: "Password reset successfully" },
+          400: { description: "Invalid or expired reset code or request data" },
+        },
+      },
+    },
     "/api/products": {
       get: {
         tags: ["Products"],
