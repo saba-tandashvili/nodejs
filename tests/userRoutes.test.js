@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { unlink } from "node:fs/promises";
+import path from "node:path";
 import { after, before, test } from "node:test";
 import express from "express";
 import prisma from "../config/prisma.js";
@@ -15,6 +17,7 @@ const user = {
   role: "admin",
 };
 const adminToken = signToken({ id: user.id, role: user.role });
+const customerToken = signToken({ id: user.id, role: "customer" });
 const app = express();
 app.use(express.json());
 app.use("/api/users", userRoutes);
@@ -22,6 +25,7 @@ app.use("/api/users", userRoutes);
 let server;
 let origin;
 let lastOperation;
+let uploadedProfilePicture;
 function apiFetch(path, options = {}, token = adminToken) {
   return fetch(`${origin}${path}`, {
     ...options,
@@ -62,6 +66,9 @@ before(async () => {
 });
 
 after(async () => {
+  if (uploadedProfilePicture) {
+    await unlink(path.resolve("uploads", uploadedProfilePicture.slice("/uploads/".length)));
+  }
   prisma.users.findMany = originalMethods.findMany;
   prisma.users.findUnique = originalMethods.findUnique;
   prisma.users.create = originalMethods.create;
@@ -133,6 +140,40 @@ test("protects the profile endpoint and never returns the password", async () =>
   assert.equal(profile.id, "1");
   assert.equal(profile.role, "admin");
   assert.equal("password" in profile, false);
+});
+
+test("uploads the authenticated user's profile picture", async () => {
+  const unauthenticated = await fetch(`${origin}/api/users/upload-picture`, { method: "POST" });
+  assert.equal(unauthenticated.status, 401);
+
+  const invalidForm = new FormData();
+  invalidForm.append("picture", new Blob(["not an image"], { type: "image/jpeg" }), "bad.jpg");
+  const invalidImage = await apiFetch("/api/users/upload-picture", {
+    method: "POST",
+    body: invalidForm,
+  });
+  assert.equal(invalidImage.status, 400);
+
+  const form = new FormData();
+  form.append(
+    "picture",
+    new Blob([Buffer.from([0xff, 0xd8, 0xff, 0xd9])], { type: "image/jpeg" }),
+    "profile.jpg",
+  );
+  const response = await apiFetch(
+    "/api/users/upload-picture",
+    { method: "POST", body: form },
+    customerToken,
+  );
+
+  assert.equal(response.status, 200);
+  const profile = await response.json();
+  assert.equal(profile.id, "1");
+  assert.match(profile.profilePicture, /^\/uploads\/profile-pictures\/[\w-]+\.jpg$/);
+  assert.equal(lastOperation[0], "update");
+  assert.equal(lastOperation[1].id, user.id);
+  assert.equal(lastOperation[2].profilePicture, profile.profilePicture);
+  uploadedProfilePicture = profile.profilePicture;
 });
 
 test("restricts user administration to admins", async () => {

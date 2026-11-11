@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
+import path from "node:path";
 import prisma from "../config/prisma.js";
 import { hashPassword } from "./authController.js";
 
@@ -71,6 +74,23 @@ function respondWithDatabaseError(res, error) {
   }
   console.error("User database operation failed:", error);
   return res.status(500).json({ error: "Internal server error" });
+}
+
+function hasValidImageSignature(buffer, mimeType) {
+  if (mimeType === "image/jpeg") {
+    return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  }
+  if (mimeType === "image/png") {
+    return buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  }
+  if (mimeType === "image/gif") {
+    return ["GIF87a", "GIF89a"].includes(buffer.toString("ascii", 0, 6));
+  }
+  if (mimeType === "image/webp") {
+    return buffer.toString("ascii", 0, 4) === "RIFF" &&
+      buffer.toString("ascii", 8, 12) === "WEBP";
+  }
+  return false;
 }
 
 async function getUsers(req, res) {
@@ -153,4 +173,59 @@ async function getProfile(req, res) {
   }
 }
 
-export { getUsers, getOneUser, createUser, updateUser, deleteUser, getProfile };
+async function uploadProfilePicture(req, res) {
+  if (!req.file) {
+    return res.status(400).json({ error: "A profile picture file is required" });
+  }
+  if (!hasValidImageSignature(req.file.buffer, req.file.mimetype)) {
+    return res.status(400).json({ error: "Uploaded file is not a valid image" });
+  }
+
+  const extension = req.file.mimetype === "image/jpeg" ? ".jpg"
+    : req.file.mimetype === "image/png" ? ".png"
+      : req.file.mimetype === "image/gif" ? ".gif" : ".webp";
+  const filename = `${randomUUID()}${extension}`;
+  const uploadDirectory = path.resolve("uploads", "profile-pictures");
+  const filePath = path.join(uploadDirectory, filename);
+  const profilePicture = `/uploads/profile-pictures/${filename}`;
+
+  try {
+    await mkdir(uploadDirectory, { recursive: true });
+    await writeFile(filePath, req.file.buffer, { flag: "wx" });
+  } catch (error) {
+    try {
+      await unlink(filePath);
+    } catch (cleanupError) {
+      if (cleanupError.code !== "ENOENT") {
+        console.error("Incomplete profile picture could not be removed:", cleanupError);
+      }
+    }
+    console.error("Profile picture could not be saved:", error);
+    return res.status(500).json({ error: "Profile picture upload failed" });
+  }
+
+  try {
+    const user = await prisma.users.update({
+      where: { id: BigInt(req.user.id) },
+      data: { profilePicture },
+    });
+    return res.json(serializeUser(user));
+  } catch (error) {
+    try {
+      await unlink(filePath);
+    } catch (cleanupError) {
+      console.error("Uploaded profile picture could not be removed:", cleanupError);
+    }
+    return respondWithDatabaseError(res, error);
+  }
+}
+
+export {
+  getUsers,
+  getOneUser,
+  createUser,
+  updateUser,
+  deleteUser,
+  getProfile,
+  uploadProfilePicture,
+};

@@ -52,6 +52,7 @@ Import [docs/postman_collection.json](./docs/postman_collection.json) into Postm
 | `GET` | `/api/products` | List all products |
 | `GET` | `/api/products/:id` | Get a product by ID |
 | `POST` | `/api/products` | Create a product |
+| `POST` | `/api/products/upload-excel` | Import products from an `.xlsx` file (admin or manager; multipart field `file`) |
 | `PUT` / `PATCH` | `/api/products/:id` | Update one or more product fields |
 | `DELETE` | `/api/products/:id` | Delete a product |
 | `POST` | `/api/products/buyProduct/:id` | Record the authenticated user's purchase of a product (send `{}`) |
@@ -62,6 +63,7 @@ Import [docs/postman_collection.json](./docs/postman_collection.json) into Postm
 | --- | --- | --- |
 | `GET` | `/api/users` | List all users |
 | `GET` | `/api/users/:id` | Get a user by ID |
+| `POST` | `/api/users/upload-picture` | Upload the authenticated user's picture (multipart field `picture`) |
 | `POST` | `/api/users` | Create a user |
 | `PUT` / `PATCH` | `/api/users/:id` | Update one or more user fields |
 | `DELETE` | `/api/users/:id` | Delete a user |
@@ -75,5 +77,9 @@ A product requires a non-empty `name` and `description`, and a non-negative nume
   "description": "A high-performance laptop."
 }
 ```
+
+For product imports, upload an `.xlsx` workbook with the columns `name`, `price`, and `description`. Optional columns are `stock`, `slug`, and `categoryId`. The first worksheet is imported; every populated product row is validated before any products are created. Imports are limited to 5,000 products and files up to 10 MB.
+
+Profile pictures may be JPEG, PNG, GIF, or WebP images up to 5 MB. The saved URL is included in the updated user response and files are served from `/uploads/profile-pictures/`.
 
 The category, product, user, and purchase relations are defined in `prisma/schema.prisma`. Each purchase receives its own ID so that a user can buy the same product more than once.

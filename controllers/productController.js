@@ -1,3 +1,4 @@
+import ExcelJS from "exceljs";
 import prisma from "../config/prisma.js";
 
 const productFields = ["name", "price", "description", "stock", "slug", "categoryId"];
@@ -219,6 +220,137 @@ async function buyProduct(req, res) {
   }
 }
 
+const excelProductFields = new Set(productFields);
+const requiredExcelFields = ["name", "price", "description"];
+const maxExcelProducts = 5000;
+
+function parseExcelNumber(value, fieldName, rowNumber) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const number = Number(value.trim());
+    if (Number.isFinite(number)) {
+      return number;
+    }
+  }
+  throw new Error(`${fieldName} must be a number in row ${rowNumber}`);
+}
+
+function parseExcelProductRow(row, columns, rowNumber) {
+  const valueFor = (field) => columns.has(field) ? row.getCell(columns.get(field)).value : undefined;
+  const product = {};
+  const name = valueFor("name");
+  const description = valueFor("description");
+  if (typeof name !== "string") {
+    throw new Error(`Name must be text in row ${rowNumber}`);
+  }
+  if (typeof description !== "string") {
+    throw new Error(`Description must be text in row ${rowNumber}`);
+  }
+  product.name = name;
+  product.description = description;
+  product.price = parseExcelNumber(valueFor("price"), "Price", rowNumber);
+
+  const stock = valueFor("stock");
+  if (stock !== undefined && stock !== null && stock !== "") {
+    product.stock = parseExcelNumber(stock, "Stock", rowNumber);
+  }
+  const slug = valueFor("slug");
+  if (columns.has("slug")) {
+    product.slug = slug === undefined || slug === null ||
+      typeof slug === "string" && !slug.trim()
+      ? null
+      : slug;
+  }
+  const categoryId = valueFor("categoryId");
+  if (columns.has("categoryId")) {
+    product.categoryId = categoryId === undefined || categoryId === null || categoryId === ""
+      ? null
+      : typeof categoryId === "number" && Number.isSafeInteger(categoryId)
+        ? String(categoryId)
+        : categoryId;
+  }
+
+  const validationError = validateProduct(product);
+  if (validationError) {
+    throw new Error(`${validationError} in row ${rowNumber}`);
+  }
+  return normalizeProduct(product);
+}
+
+async function uploadProductsExcel(req, res) {
+  if (!req.file) {
+    return res.status(400).json({ error: "An .xlsx file is required" });
+  }
+  if (req.file.buffer.length < 4 || req.file.buffer.toString("ascii", 0, 2) !== "PK") {
+    return res.status(400).json({ error: "Uploaded file is not a valid .xlsx workbook" });
+  }
+
+  const workbook = new ExcelJS.Workbook();
+  try {
+    await workbook.xlsx.load(req.file.buffer);
+  } catch (error) {
+    return res.status(400).json({ error: "Uploaded file is not a valid .xlsx workbook" });
+  }
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) {
+    return res.status(400).json({ error: "Workbook must contain a worksheet" });
+  }
+
+  const headerRow = worksheet.getRow(1);
+  const columns = new Map();
+  for (let columnNumber = 1; columnNumber <= headerRow.cellCount; columnNumber += 1) {
+    const value = headerRow.getCell(columnNumber).value;
+    if (value === undefined || value === null || value === "") {
+      continue;
+    }
+    if (typeof value !== "string") {
+      return res.status(400).json({ error: "Excel column headers must be text" });
+    }
+    const field = value.trim();
+    if (!excelProductFields.has(field)) {
+      return res.status(400).json({ error: `Unknown Excel column: ${field}` });
+    }
+    if (columns.has(field)) {
+      return res.status(400).json({ error: `Duplicate Excel column: ${field}` });
+    }
+    columns.set(field, columnNumber);
+  }
+  const missingFields = requiredExcelFields.filter((field) => !columns.has(field));
+  if (missingFields.length) {
+    return res.status(400).json({
+      error: `Excel file must include columns: ${requiredExcelFields.join(", ")}`,
+    });
+  }
+  if (worksheet.rowCount - 1 > maxExcelProducts) {
+    return res.status(400).json({ error: `Excel file cannot contain more than ${maxExcelProducts} products` });
+  }
+
+  const products = [];
+  try {
+    for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+      const row = worksheet.getRow(rowNumber);
+      if (row.values.every((value) => value === undefined || value === null || value === "")) {
+        continue;
+      }
+      products.push(parseExcelProductRow(row, columns, rowNumber));
+    }
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  if (!products.length) {
+    return res.status(400).json({ error: "Excel file must contain at least one product" });
+  }
+
+  try {
+    const result = await prisma.products.createMany({ data: products });
+    return res.status(201).json({ imported: result.count });
+  } catch (error) {
+    return respondWithDatabaseError(res, error);
+  }
+}
+
 export {
   getProducts,
   getOneProduct,
@@ -229,4 +361,5 @@ export {
   deleteProduct,
   deleteProduct as deleteProducts,
   buyProduct,
+  uploadProductsExcel,
 };

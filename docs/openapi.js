@@ -21,6 +21,7 @@ const userSchema = {
     lastName: { type: "string", minLength: 1, example: "Lovelace" },
     email: { type: "string", format: "email", example: "ada@example.com" },
     role: { type: "string", enum: ["admin", "manager", "customer"], example: "customer" },
+    profilePicture: { type: "string", nullable: true, example: "/uploads/profile-pictures/uuid.jpg" },
   },
 };
 
@@ -192,6 +193,42 @@ const swaggerDocument = {
         },
       },
     },
+    "/api/products/upload-excel": {
+      post: {
+        tags: ["Products"],
+        summary: "Import products from an Excel workbook (admin or manager)",
+        requestBody: {
+          required: true,
+          content: {
+            "multipart/form-data": {
+              schema: {
+                type: "object",
+                required: ["file"],
+                properties: { file: { type: "string", format: "binary" } },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "Products imported",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: { imported: { type: "integer" } },
+                },
+              },
+            },
+          },
+          400: { description: "Invalid workbook, product data, or category reference" },
+          403: { description: "Admin or manager role required" },
+          413: { description: "Uploaded file is too large" },
+          409: { description: "A product with this slug already exists" },
+          500: { description: "Database error" },
+        },
+      },
+    },
     "/api/products/{id}": {
       parameters: [
         {
@@ -353,6 +390,34 @@ const swaggerDocument = {
         responses: {
           200: { description: "Profile without password" },
           401: { description: "Missing or invalid token" },
+        },
+      },
+    },
+    "/api/users/upload-picture": {
+      post: {
+        tags: ["Users"],
+        summary: "Upload the authenticated user's profile picture",
+        requestBody: {
+          required: true,
+          content: {
+            "multipart/form-data": {
+              schema: {
+                type: "object",
+                required: ["picture"],
+                properties: { picture: { type: "string", format: "binary" } },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Updated user profile, including the picture URL",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/User" } } },
+          },
+          400: { description: "Invalid or missing image" },
+          401: { description: "Missing or invalid token" },
+          413: { description: "Uploaded file is too large" },
+          404: { description: "User not found" },
         },
       },
     },

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import express from "express";
+import ExcelJS from "exceljs";
 import prisma from "../config/prisma.js";
 import { signToken } from "../middleware/auth.js";
 import productRoutes from "../routes/productRoutes.js";
@@ -26,6 +27,7 @@ let server;
 let origin;
 let lastOperation;
 let purchaseCount = 0;
+let createManyCount = 0;
 function apiFetch(path, options = {}, token = adminToken) {
   return fetch(`${origin}${path}`, {
     ...options,
@@ -41,6 +43,7 @@ const originalMethods = {
   create: prisma.products.create,
   update: prisma.products.update,
   delete: prisma.products.delete,
+  createMany: prisma.products.createMany,
   transaction: prisma.$transaction,
 };
 
@@ -50,6 +53,11 @@ before(async () => {
   prisma.products.create = async ({ data }) => {
     lastOperation = ["create", data];
     return { ...product, ...data };
+  };
+  prisma.products.createMany = async ({ data }) => {
+    lastOperation = ["createMany", data];
+    createManyCount += 1;
+    return { count: data.length };
   };
   prisma.products.update = async ({ where, data }) => {
     lastOperation = ["update", where, data];
@@ -96,6 +104,7 @@ after(async () => {
   prisma.products.create = originalMethods.create;
   prisma.products.update = originalMethods.update;
   prisma.products.delete = originalMethods.delete;
+  prisma.products.createMany = originalMethods.createMany;
   prisma.$transaction = originalMethods.transaction;
   await new Promise((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
@@ -122,6 +131,67 @@ test("creates a product with normalized fields", async () => {
     "create",
     { name: "Laptop", price: 12, description: "Useful" },
   ]);
+});
+
+test("imports products from an Excel workbook", async () => {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("Products");
+  worksheet.addRow(["name", "price", "description", "stock", "slug", "categoryId"]);
+  worksheet.addRow([" Laptop ", 999.99, " Powerful laptop ", 5, "laptop", 2]);
+  const file = new Blob([await workbook.xlsx.writeBuffer()], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const form = new FormData();
+  form.append("file", file, "products.xlsx");
+
+  const response = await apiFetch("/api/products/upload-excel", {
+    method: "POST",
+    body: form,
+  });
+
+  assert.equal(response.status, 201);
+  assert.deepEqual(await response.json(), { imported: 1 });
+  assert.deepEqual(lastOperation, [
+    "createMany",
+    [{
+      name: "Laptop",
+      price: 999.99,
+      description: "Powerful laptop",
+      stock: 5,
+      slug: "laptop",
+      categoryId: 2n,
+    }],
+  ]);
+});
+
+test("rejects invalid Excel rows without importing any products", async () => {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("Products");
+  worksheet.addRow(["name", "price", "description"]);
+  worksheet.addRow(["Laptop", -1, "A laptop"]);
+  const file = new Blob([await workbook.xlsx.writeBuffer()], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const form = new FormData();
+  form.append("file", file, "products.xlsx");
+  const previousCreateManyCount = createManyCount;
+
+  const response = await apiFetch("/api/products/upload-excel", {
+    method: "POST",
+    body: form,
+  });
+
+  assert.equal(response.status, 400);
+  assert.equal(createManyCount, previousCreateManyCount);
+});
+
+test("restricts Excel imports to admins and managers", async () => {
+  const response = await apiFetch(
+    "/api/products/upload-excel",
+    { method: "POST" },
+    customerToken,
+  );
+  assert.equal(response.status, 403);
 });
 
 test("rejects invalid product input", async () => {

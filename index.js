@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 dotenv.config();
 import express from "express";
+import path from "node:path";
 import swaggerUi from "swagger-ui-express";
 import swaggerDocument from "./docs/openapi.js";
 import userRoutes from "./routes/userRoutes.js";
@@ -13,6 +14,7 @@ const port = process.env.PORT || 3000;
 
 assertJwtSecret();
 app.use(express.json());
+app.use("/uploads", express.static(path.resolve("uploads")));
 
 app.get("/", (req, res) => {
   res.json({ message: "Welcome to the Express Prisma API" });
